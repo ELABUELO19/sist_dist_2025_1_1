@@ -1,0 +1,73 @@
+version: "3"
+
+services:
+
+  scraper:
+    build: ./scraper
+    container_name: scraper
+    depends_on:
+      - storage
+      - redis
+    environment:
+      - MONGO_URI=mongodb://storage:27017
+      - REDIS_HOST=redis
+    networks:
+      - traffic-net
+
+  storage:
+    image: mongo:6
+    container_name: storage
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    networks:
+      - traffic-net
+
+  mongo-express:
+    image: mongo-express
+    container_name: mongo-express
+    depends_on:
+      - storage
+    ports:
+      - "8081:8081"
+    environment:
+      - ME_CONFIG_MONGODB_SERVER=storage
+      - ME_CONFIG_MONGODB_PORT=27017
+      - ME_CONFIG_BASICAUTH_USERNAME=admin
+      - ME_CONFIG_BASICAUTH_PASSWORD=admin123
+    networks:
+      - traffic-net
+
+  generator:
+    build: ./generator
+    container_name: generator
+    depends_on:
+      - storage
+    environment:
+      - MONGO_URI=mongodb://storage:27017
+    networks:
+      - traffic-net
+
+  redis:
+    image: docker.io/bitnami/redis:7.4
+    container_name: redis
+    environment:
+      - ALLOW_EMPTY_PASSWORD=yes
+      - REDIS_DISABLE_COMMANDS=FLUSHDB,FLUSHALL
+      - REDIS_MAXMEMORY=16mb
+      - REDIS_MAXMEMORY_POLICY=allkeys-lru 
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/bitnami/redis/data
+    networks:
+      - traffic-net
+
+volumes:
+  mongo-data:
+  redis_data:
+
+networks:
+  traffic-net:
+    driver: bridge
