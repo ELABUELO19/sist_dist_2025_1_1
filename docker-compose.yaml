@@ -34,7 +34,7 @@ services:
     environment:
       - ME_CONFIG_MONGODB_SERVER=storage
       - ME_CONFIG_MONGODB_PORT=27017
-      - ME_CONFIG_BASICAUTH_USERNAME=admin
+      - ME_CONFIG_BASICAUTH_USERNAME=admin #usuario y clave para ingresar a la base de datos
       - ME_CONFIG_BASICAUTH_PASSWORD=admin123
     networks:
       - traffic-net
@@ -55,8 +55,8 @@ services:
     environment:
       - ALLOW_EMPTY_PASSWORD=yes
       - REDIS_DISABLE_COMMANDS=FLUSHDB,FLUSHALL
-      - REDIS_MAXMEMORY=16mb
-      - REDIS_MAXMEMORY_POLICY=allkeys-lru 
+      - REDIS_MAXMEMORY=512kb #Capacidad modificable
+      - REDIS_MAXMEMORY_POLICY=allkeys-lru #Politica modificable allkeys-random
     ports:
       - "6379:6379"
     volumes:
