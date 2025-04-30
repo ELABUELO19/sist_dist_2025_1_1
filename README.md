@@ -46,6 +46,4 @@ Puedes modificar los siguientes parámetros:
 
 ## Autores
  Ignacio Gutierres y Matias Herrera.
-```
 
----
