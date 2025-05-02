@@ -59,4 +59,4 @@ def simulate_queries(num_queries=1000):
 if __name__ == "__main__":
     while True:
         simulate_queries(500)  # Puedes variar el número
-        time.sleep(300)  # Cada 5 minutos
+        time.sleep(10)  # Cada 5 minutos
