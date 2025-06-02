@@ -1,0 +1,225 @@
+version: '3.8'
+
+services:
+  # Hadoop NameNode
+  namenode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    container_name: namenode
+    restart: always
+    ports:
+      - 9870:9870
+      - 9000:9000
+    volumes:
+      - hadoop_namenode:/hadoop/dfs/name
+      - ./data:/data
+      - ./pig_scripts:/pig_scripts
+      - ./output:/output
+    environment:
+      - CLUSTER_NAME=test
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+    env_file:
+      - ./hadoop.env
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9870"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Hadoop DataNode
+  datanode:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode
+    restart: always
+    volumes:
+      - hadoop_datanode:/hadoop/dfs/data
+    environment:
+      - SERVICE_PRECONDITION=namenode:9870
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+    ports:
+      - "9864:9864"
+    env_file:
+      - ./hadoop.env
+    depends_on:
+      - namenode
+
+  # Hadoop ResourceManager
+  resourcemanager:
+    image: bde2020/hadoop-resourcemanager:2.0.0-hadoop3.2.1-java8
+    container_name: resourcemanager
+    restart: always
+    environment:
+      - SERVICE_PRECONDITION=namenode:9000 namenode:9870 datanode:9864
+    env_file:
+      - ./hadoop.env
+    ports:
+      - "8088:8088"
+    depends_on:
+      - namenode
+      - datanode
+
+  # Hadoop NodeManager
+  nodemanager1:
+    image: bde2020/hadoop-nodemanager:2.0.0-hadoop3.2.1-java8
+    container_name: nodemanager
+    restart: always
+    environment:
+      - SERVICE_PRECONDITION=namenode:9000 namenode:9870 datanode:9864 resourcemanager:8088
+    env_file:
+      - ./hadoop.env
+    depends_on:
+      - resourcemanager
+
+  # Hadoop HistoryServer
+  historyserver:
+    image: bde2020/hadoop-historyserver:2.0.0-hadoop3.2.1-java8
+    container_name: historyserver
+    restart: always
+    environment:
+      - SERVICE_PRECONDITION=namenode:9000 namenode:9870 datanode:9864 resourcemanager:8088
+    volumes:
+      - hadoop_historyserver:/hadoop/yarn/timeline
+    env_file:
+      - ./hadoop.env
+    ports:
+      - "8188:8188"
+    depends_on:
+      - resourcemanager
+
+  # Apache Pig
+  pig:
+    build: ./pig
+    container_name: pig
+    restart: always
+    volumes:
+      - ./data:/data
+      - ./pig_scripts:/pig_scripts
+      - ./output:/output
+    environment:
+      - SERVICE_PRECONDITION=namenode:9000 namenode:9870 datanode:9864
+    depends_on:
+      - namenode
+      - datanode
+    stdin_open: true
+    tty: true
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:13
+    container_name: postgres
+    restart: always
+    environment:
+      POSTGRES_DB: traffic_db
+      POSTGRES_USER: traffic_user
+      POSTGRES_PASSWORD: traffic_pass
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U traffic_user -d traffic_db"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Web Scraper Service
+  scraper:
+    build: ./scraper
+    container_name: scraper
+    restart: always
+    environment:
+      - DATABASE_URL=postgresql://traffic_user:traffic_pass@postgres:5432/traffic_db
+      - REDIS_URL=redis://redis:6379
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8080/health', timeout=5)"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Data Processing Service
+  processor:
+    build: ./processor
+    container_name: processor
+    restart: always
+    environment:
+      - DATABASE_URL=postgresql://traffic_user:traffic_pass@postgres:5432/traffic_db
+      - REDIS_URL=redis://redis:6379
+      - HADOOP_CONF_DIR=/opt/hadoop/etc/hadoop
+    volumes:
+      - ./data:/app/data
+      - ./output:/app/output
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      namenode:
+        condition: service_healthy
+
+  # API Service
+  api:
+    build: ./api
+    container_name: api
+    restart: always
+    environment:
+      - DATABASE_URL=postgresql://traffic_user:traffic_pass@postgres:5432/traffic_db
+      - REDIS_URL=redis://redis:6379
+    ports:
+      - "5000:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Web Dashboard (Optional)
+  dashboard:
+    image: nginx:alpine
+    container_name: dashboard
+    restart: always
+    ports:
+      - "8080:80"
+    volumes:
+      - ./dashboard:/usr/share/nginx/html
+    depends_on:
+      - api
+
+volumes:
+  hadoop_namenode:
+  hadoop_datanode:
+  hadoop_historyserver:
+  postgres_data:
+  redis_data:
+
+networks:
+  default:
+    name: traffic_network
