@@ -1,33 +1,35 @@
 FROM python:3.9-slim
 
-RUN apt-get update && apt-get install -y \
+# Install system dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
     gcc \
     libpq-dev \
-    openjdk-11-jdk \
     wget \
     curl \
-    && rm -rf /var/lib/apt/lists/*
+    ca-certificates \
+    && apt-get clean && \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
-ENV JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
-
-ENV HADOOP_VERSION=3.2.1
-RUN wget https://archive.apache.org/dist/hadoop/common/hadoop-${HADOOP_VERSION}/hadoop-${HADOOP_VERSION}.tar.gz && \
-    tar -xzf hadoop-${HADOOP_VERSION}.tar.gz && \
-    mv hadoop-${HADOOP_VERSION} /opt/hadoop && \
-    rm hadoop-${HADOOP_VERSION}.tar.gz
-
-ENV HADOOP_HOME=/opt/hadoop
-ENV HADOOP_CONF_DIR=/opt/hadoop/etc/hadoop
-ENV PATH=$PATH:$HADOOP_HOME/bin:$HADOOP_HOME/sbin
-
+# Set working directory
 WORKDIR /app
 
+# Copy requirements first for better caching
 COPY requirements.txt .
 
-RUN pip install --no-cache-dir -r requirements.txt
+# Install Python dependencies
+RUN python -m pip install --no-cache-dir --upgrade pip && \
+    python -m pip install --no-cache-dir -r requirements.txt
 
+# Copy application code
 COPY processor.py .
 
+# Create necessary directories
 RUN mkdir -p /app/data /app/output
 
+# Set environment variables for Hadoop (remote connection)
+ENV HADOOP_CONF_DIR=/opt/hadoop/etc/hadoop
+ENV JAVA_HOME=/usr/lib/jvm/default-java
+
+# Run the processor
 CMD ["python", "processor.py"]

@@ -1,0 +1,4 @@
+incident_id,incident_type,description,latitude,longitude,street,city,comuna,severity,timestamp,source
+test_002,ATASCO,Congestión vehicular en Las Condes,-33.4025,-70.5693,Av. Las Condes,Santiago,Las Condes,3,2025-06-02 21:37:24.480940+00:00,waze
+test_001,ACCIDENTE,Accidente de tránsito en Providencia,-33.4372,-70.6506,Av. Providencia,Santiago,Providencia,5,2025-06-02 21:07:24.480940+00:00,waze
+test_003,CONSTRUCCION,Trabajo en construcción,-33.4488,-70.6693,Av. Libertador,Santiago,Santiago,2,2025-06-02 20:07:24.480940+00:00,waze
