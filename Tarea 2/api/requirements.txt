@@ -1,0 +1,30 @@
+# Web Framework
+Flask==2.3.3
+Flask-CORS==4.0.0
+gunicorn==21.2.0
+
+# Database
+psycopg2-binary==2.9.7
+SQLAlchemy==2.0.21
+
+# Cache
+redis==4.6.0
+
+# Data Processing
+pandas==2.0.3
+numpy==1.25.2
+
+# Utilities
+python-dateutil==2.8.2
+pytz==2023.3
+
+# Monitoring and Logging
+prometheus-client==0.17.1
+
+# Development and Testing (optional)
+pytest==7.4.2
+pytest-flask==1.2.0
+requests==2.31.0
+
+# Security
+Werkzeug==2.3.7
