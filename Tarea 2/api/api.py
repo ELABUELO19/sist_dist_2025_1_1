@@ -1,9 +1,3 @@
-#!/usr/bin/env python3
-"""
-API Service for Traffic Analysis System
-Provides REST endpoints for accessing processed traffic data and analytics
-"""
-
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 import psycopg2
@@ -15,22 +9,18 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 import logging
 
-# Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 CORS(app)
 
-# Configuration
 DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://traffic_user:traffic_pass@postgres:5432/traffic_db')
 REDIS_URL = os.getenv('REDIS_URL', 'redis://redis:6379')
 
-# Initialize Redis connection
 redis_client = redis.from_url(REDIS_URL)
 
-def get_db_connection():
-    """Get database connection"""
+def get_db_connection(): 
     try:
         return psycopg2.connect(DATABASE_URL)
     except Exception as e:
@@ -38,14 +28,13 @@ def get_db_connection():
         return None
 
 def cache_response(key: str, data: dict, ttl: int = 300):
-    """Cache response in Redis"""
     try:
         redis_client.setex(key, ttl, json.dumps(data, default=str))
     except Exception as e:
         logger.error(f"Cache error: {e}")
 
 def get_cached_response(key: str) -> Optional[dict]:
-    """Get cached response from Redis"""
+    
     try:
         cached = redis_client.get(key)
         if cached:
@@ -56,7 +45,7 @@ def get_cached_response(key: str) -> Optional[dict]:
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
-    """Health check endpoint"""
+    
     try:
         # Check database
         conn = get_db_connection()
@@ -85,7 +74,7 @@ def health_check():
 
 @app.route('/api/incidents', methods=['GET'])
 def get_incidents():
-    """Get traffic incidents with optional filtering"""
+
     try:
         # Check cache first
         cache_key = f"incidents:{request.query_string.decode()}"
@@ -93,14 +82,12 @@ def get_incidents():
         if cached_response:
             return jsonify(cached_response)
         
-        # Parse query parameters
         comuna = request.args.get('comuna')
         incident_type = request.args.get('type')
         limit = min(int(request.args.get('limit', 100)), 1000)
         offset = int(request.args.get('offset', 0))
         hours = int(request.args.get('hours', 24))  # Last N hours
-        
-        # Build query
+
         conditions = ["timestamp > %s"]
         params = [datetime.now() - timedelta(hours=hours)]
         
@@ -145,7 +132,6 @@ def get_incidents():
                     "timestamp": datetime.now().isoformat()
                 }
                 
-                # Cache response
                 cache_response(cache_key, response, 300)  # 5 minutes
                 
                 return jsonify(response)
@@ -159,7 +145,7 @@ def get_incidents():
 
 @app.route('/api/analytics/comuna', methods=['GET'])
 def get_comuna_analytics():
-    """Get analytics by comuna"""
+    
     try:
         cache_key = "analytics:comuna"
         cached_response = get_cached_response(cache_key)
@@ -207,7 +193,7 @@ def get_comuna_analytics():
 
 @app.route('/api/analytics/temporal', methods=['GET'])
 def get_temporal_analytics():
-    """Get temporal analytics (hourly patterns)"""
+    
     try:
         cache_key = "analytics:temporal"
         cached_response = get_cached_response(cache_key)
@@ -265,7 +251,7 @@ def get_temporal_analytics():
 
 @app.route('/api/analytics/hotspots', methods=['GET'])
 def get_hotspots():
-    """Get traffic hotspots"""
+    
     try:
         cache_key = "analytics:hotspots"
         cached_response = get_cached_response(cache_key)
@@ -390,7 +376,6 @@ def get_summary_analytics():
                 
                 overall_stats = cursor.fetchone()
                 
-                # Top comunas by incidents (last 24h)
                 cursor.execute("""
                     SELECT comuna, COUNT(*) as incident_count
                     FROM traffic_incidents
@@ -402,7 +387,6 @@ def get_summary_analytics():
                 
                 top_comunas = cursor.fetchall()
                 
-                # Recent critical incidents
                 cursor.execute("""
                     SELECT incident_type, comuna, severity, timestamp, description
                     FROM traffic_incidents
@@ -413,7 +397,6 @@ def get_summary_analytics():
                 
                 critical_incidents = cursor.fetchall()
                 
-                # System performance metrics
                 try:
                     processing_report = redis_client.get("processing:last_report")
                     if processing_report:
@@ -435,7 +418,7 @@ def get_summary_analytics():
                     "generated_at": datetime.now().isoformat()
                 }
                 
-                cache_response(cache_key, response, 300)  # 5 minutes
+                cache_response(cache_key, response, 300)  # tiempo de cache 5 minutos
                 return jsonify(response)
         
         finally:
@@ -447,7 +430,7 @@ def get_summary_analytics():
 
 @app.route('/api/pig/results', methods=['GET'])
 def get_pig_results():
-    """Get results from Apache Pig analysis"""
+    
     try:
         cache_key = "pig:results"
         cached_response = get_cached_response(cache_key)
@@ -456,7 +439,6 @@ def get_pig_results():
         
         results = {}
         
-        # Try to get cached Pig results from Redis
         pig_keys = [
             "analysis:comuna_counts",
             "analysis:type_counts", 
@@ -468,7 +450,6 @@ def get_pig_results():
             try:
                 data = redis_client.get(key)
                 if data:
-                    # Parse CSV-like data
                     lines = data.decode().strip().split('\n')
                     parsed_data = []
                     for line in lines:
@@ -485,7 +466,7 @@ def get_pig_results():
             "note": "Results from Apache Pig distributed processing"
         }
         
-        cache_response(cache_key, response, 900)  # 15 minutes
+        cache_response(cache_key, response, 900)  # cache de respuesta por 15 minutos
         return jsonify(response)
     
     except Exception as e:
@@ -494,7 +475,6 @@ def get_pig_results():
 
 @app.route('/api/system/metrics', methods=['GET'])
 def get_system_metrics():
-    """Get system performance metrics"""
     try:
         cache_key = "metrics:system"
         cached_response = get_cached_response(cache_key)
@@ -530,7 +510,6 @@ def get_system_metrics():
             finally:
                 conn.close()
         
-        # Redis metrics
         redis_metrics = {}
         try:
             info = redis_client.info()
@@ -542,7 +521,6 @@ def get_system_metrics():
                 "keyspace_misses": info.get('keyspace_misses', 0)
             }
             
-            # Calculate hit rate
             hits = redis_metrics['keyspace_hits']
             misses = redis_metrics['keyspace_misses']
             if hits + misses > 0:
@@ -568,15 +546,7 @@ def get_system_metrics():
 
 @app.route('/api/trigger/scraping', methods=['POST'])
 def trigger_scraping():
-    """Trigger manual scraping (for testing)"""
     try:
-        # This would typically trigger the scraper service
-        # For now, we'll just return a success message
-        
-        # You could implement this by:
-        # 1. Sending a message to a queue
-        # 2. Making an HTTP call to the scraper service
-        # 3. Setting a flag in Redis that the scraper checks
         
         redis_client.setex("trigger:scraping", 300, "requested")
         
@@ -591,7 +561,6 @@ def trigger_scraping():
 
 @app.route('/api/trigger/processing', methods=['POST'])
 def trigger_processing():
-    """Trigger manual data processing"""
     try:
         redis_client.setex("trigger:processing", 300, "requested")
         

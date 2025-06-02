@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-
-
 import requests
 import json
 import time
@@ -39,14 +36,12 @@ class TrafficIncident:
     processed: bool = False
 
 class WazeScraper:
-    """Scraper for Waze traffic data"""
     
     def __init__(self, db_url: str, redis_url: str):
         self.db_url = db_url
         self.redis_client = redis.from_url(redis_url)
         self.session = requests.Session()
         
-        #limite de region metropolitana
         self.bounds = {
             'north': -33.2,
             'south': -33.8,
@@ -65,7 +60,6 @@ class WazeScraper:
             'ALERT': 'alerta'
         }
         
-        # Santiago communes
         self.comunas = [
             'Santiago', 'Las Condes', 'Providencia', 'Ñuñoa', 'Maipú',
             'La Florida', 'Puente Alto', 'Peñalolén', 'San Bernardo',
@@ -79,7 +73,6 @@ class WazeScraper:
         ]
     
     def get_database_connection(self):
-        """Get database connection"""
         try:
             conn = psycopg2.connect(self.db_url)
             return conn
@@ -88,7 +81,6 @@ class WazeScraper:
             return None
     
     def create_tables(self):
-        """Create necessary database tables"""
         conn = self.get_database_connection()
         if not conn:
             return False
@@ -131,19 +123,14 @@ class WazeScraper:
         finally:
             conn.close()
     
-    def generate_incident_id(self, incident_data: Dict) -> str:
-        """Generar ID unico de incidente basado en lugar y tiempo""" 
+    def generate_incident_id(self, incident_data: Dict) -> str: 
         key_string = f"{incident_data.get('location', {}).get('y', 0)}" \
                     f"{incident_data.get('location', {}).get('x', 0)}" \
                     f"{incident_data.get('type', '')}" \
                     f"{incident_data.get('pubMillis', 0)}"
         return hashlib.md5(key_string.encode()).hexdigest()
     
-    def determine_comuna(self, latitude: float, longitude: float) -> Optional[str]:
-        """Determine comuna based on coordinates (simplified)"""
-        # This is a simplified implementation
-        # In a real scenario, you would use a geospatial library or service
-        
+    def determine_comuna(self, latitude: float, longitude: float) -> Optional[str]:        
         
         if -33.45 <= latitude <= -33.42 and -70.67 <= longitude <= -70.63:
             return 'Santiago'
@@ -161,7 +148,6 @@ class WazeScraper:
             return 'Región Metropolitana'
     
     def fetch_waze_data(self) -> List[Dict]:
-        """Fetch traffic data from Waze API"""
         try:
             
             url = "https://www.waze.com/live-map/api/georss"
@@ -227,7 +213,6 @@ class WazeScraper:
             return []
     
     def process_incident(self, incident_data: Dict) -> Optional[TrafficIncident]:
-        """Process raw incident data into TrafficIncident object"""
         try:
             location = incident_data.get('location', {})
             latitude = location.get('y', 0)
@@ -268,7 +253,7 @@ class WazeScraper:
             return None
     
     def save_incident(self, incident: TrafficIncident) -> bool:
-        """Save incident to database"""
+        
         conn = self.get_database_connection()
         if not conn:
             return False
@@ -304,7 +289,6 @@ class WazeScraper:
             conn.close()
     
     def cache_incident(self, incident: TrafficIncident):
-        """Cache incident in Redis"""
         try:
             cache_key = f"incident:{incident.incident_id}"
             self.redis_client.setex(
@@ -316,7 +300,6 @@ class WazeScraper:
             logger.error(f"Error caching incident: {e}")
     
     def scrape_and_store(self):
-        """Main scraping and storage method"""
         logger.info("Starting Waze scraping cycle")
         
         incidents_data = self.fetch_waze_data()
@@ -342,7 +325,6 @@ class WazeScraper:
             logger.error(f"Error updating metrics: {e}")
     
     def export_to_csv(self, output_path: str = "/app/data"):
-        """Export incidents to CSV for Pig processing"""
         conn = self.get_database_connection()
         if not conn:
             return
@@ -386,7 +368,6 @@ class WazeScraper:
             conn.close()
 
 def main():
-    """Main function"""
     db_url = os.getenv('DATABASE_URL', 'postgresql://traffic_user:traffic_pass@localhost:5432/traffic_db')
     redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379')
     

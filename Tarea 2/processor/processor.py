@@ -1,9 +1,3 @@
-#!/usr/bin/env python3
-"""
-Traffic Data Processing Service
-Handles filtering, homogenization, and distributed processing using Apache Pig
-"""
-
 import os
 import json
 import time
@@ -18,7 +12,7 @@ import pandas as pd
 from dataclasses import dataclass
 import schedule
 
-# Configure logging
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
@@ -43,16 +37,13 @@ class TrafficDataProcessor:
         self.data_path = "/app/data"
         self.output_path = "/app/output"
         
-        # Ensure directories exist
         os.makedirs(self.data_path, exist_ok=True)
         os.makedirs(self.output_path, exist_ok=True)
         
-        # Processing thresholds
         self.duplicate_distance_threshold = 0.001  # ~100 meters
         self.duplicate_time_threshold = 300  # 5 minutes
         
     def get_database_connection(self):
-        """Get database connection"""
         try:
             conn = psycopg2.connect(self.db_url)
             return conn
@@ -81,7 +72,6 @@ class TrafficDataProcessor:
                 if not raw_incidents:
                     return 0, 0
                 
-                # Apply filtering rules
                 filtered_incidents = []
                 
                 for incident in raw_incidents:
@@ -90,14 +80,11 @@ class TrafficDataProcessor:
                 
                 logger.info(f"Filtered to {len(filtered_incidents)} valid incidents")
                 
-                # Remove duplicates
                 deduplicated_incidents = self.remove_duplicates(filtered_incidents)
                 logger.info(f"After deduplication: {len(deduplicated_incidents)} incidents")
                 
-                # Homogenize incidents
                 homogenized_incidents = self.homogenize_incidents(deduplicated_incidents)
                 
-                # Update processed status
                 incident_ids = [inc['incident_id'] for inc in homogenized_incidents]
                 if incident_ids:
                     cursor.execute("""
@@ -116,24 +103,19 @@ class TrafficDataProcessor:
             conn.close()
     
     def is_valid_incident(self, incident: Dict) -> bool:
-        """Check if incident is valid based on filtering rules"""
-        # Check for required fields
         required_fields = ['incident_id', 'incident_type', 'latitude', 'longitude', 'timestamp']
         for field in required_fields:
             if not incident.get(field):
                 return False
         
-        # Check coordinate bounds (Santiago Metropolitan Region)
         lat, lon = incident['latitude'], incident['longitude']
         if not (-33.8 <= lat <= -33.2 and -71.0 <= lon <= -70.3):
             return False
         
-        # Check if description is meaningful (not empty or too short)
         description = incident.get('description', '').strip()
         if len(description) < 3:
             return False
-        
-        # Check timestamp is recent (within last 7 days)
+
         try:
             incident_time = incident['timestamp']
             if isinstance(incident_time, str):
@@ -148,11 +130,9 @@ class TrafficDataProcessor:
         return True
     
     def remove_duplicates(self, incidents: List[Dict]) -> List[Dict]:
-        """Remove duplicate incidents based on proximity and time"""
         if not incidents:
             return incidents
         
-        # Sort by timestamp
         sorted_incidents = sorted(incidents, key=lambda x: x['timestamp'])
         deduplicated = []
         
@@ -170,19 +150,15 @@ class TrafficDataProcessor:
         return deduplicated
     
     def are_incidents_duplicate(self, inc1: Dict, inc2: Dict) -> bool:
-        """Check if two incidents are duplicates"""
-        # Check incident type
         if inc1['incident_type'] != inc2['incident_type']:
             return False
         
-        # Check geographic proximity
         lat_diff = abs(inc1['latitude'] - inc2['latitude'])
         lon_diff = abs(inc1['longitude'] - inc2['longitude'])
         
         if lat_diff > self.duplicate_distance_threshold or lon_diff > self.duplicate_distance_threshold:
             return False
         
-        # Check temporal proximity
         try:
             time1 = inc1['timestamp']
             time2 = inc2['timestamp']
@@ -201,10 +177,8 @@ class TrafficDataProcessor:
         return True
     
     def homogenize_incidents(self, incidents: List[Dict]) -> List[Dict]:
-        """Homogenize incident data to unified schema"""
         homogenized = []
         
-        # Incident type mapping
         type_mapping = {
             'accidente': 'ACCIDENTE',
             'atasco': 'ATASCO', 
@@ -215,7 +189,6 @@ class TrafficDataProcessor:
             'otro': 'OTRO'
         }
         
-        # Comuna standardization
         comuna_mapping = {
             'santiago': 'Santiago',
             'las condes': 'Las Condes',
@@ -231,20 +204,16 @@ class TrafficDataProcessor:
         
         for incident in incidents:
             try:
-                # Standardize incident type
                 incident_type = incident.get('incident_type', '').lower()
                 standardized_type = type_mapping.get(incident_type, 'OTRO')
                 
-                # Standardize comuna
                 comuna = incident.get('comuna', '').lower().strip()
                 standardized_comuna = comuna_mapping.get(comuna, incident.get('comuna', ''))
                 
-                # Clean description
                 description = incident.get('description', '').strip()
                 if not description:
                     description = f"Incidente de tipo {standardized_type}"
                 
-                # Standardize severity (0-10 scale)
                 severity = incident.get('severity', 0)
                 if severity > 10:
                     severity = min(severity // 10, 10)
@@ -272,7 +241,6 @@ class TrafficDataProcessor:
         return homogenized
     
     def export_for_pig_processing(self) -> str:
-        """Export processed data for Apache Pig"""
         conn = self.get_database_connection()
         if not conn:
             return ""
@@ -293,21 +261,16 @@ class TrafficDataProcessor:
                 if not incidents:
                     logger.warning("No processed incidents found for export")
                     return ""
-                
-                # Create CSV file
+
                 timestamp = int(time.time())
                 csv_filename = f"processed_incidents_{timestamp}.csv"
                 csv_path = os.path.join(self.data_path, csv_filename)
                 
-                # Convert to pandas DataFrame for easier handling
                 df = pd.DataFrame(incidents)
-                
-                # Clean data for CSV export
                 df = df.fillna('')
                 df['description'] = df['description'].str.replace('"', '""')
                 df['street'] = df['street'].str.replace('"', '""')
                 
-                # Export to CSV
                 df.to_csv(csv_path, index=False, encoding='utf-8')
                 
                 logger.info(f"Exported {len(incidents)} incidents to {csv_path}")
@@ -320,13 +283,11 @@ class TrafficDataProcessor:
             conn.close()
     
     def run_pig_analysis(self, csv_path: str) -> bool:
-        """Run Apache Pig analysis on processed data"""
         try:
             if not csv_path or not os.path.exists(csv_path):
                 logger.error("CSV file not found for Pig processing")
                 return False
             
-            # Copy CSV to HDFS
             hdfs_input_path = "/data/"
             hdfs_cmd = f"hdfs dfs -put -f {csv_path} {hdfs_input_path}"
             
@@ -335,7 +296,6 @@ class TrafficDataProcessor:
                 logger.error(f"Failed to copy data to HDFS: {result.stderr}")
                 return False
             
-            # Run Pig script
             pig_script_path = "/pig_scripts/traffic_analysis.pig"
             pig_cmd = f"pig -f {pig_script_path}"
             
@@ -359,9 +319,7 @@ class TrafficDataProcessor:
             return False
     
     def cache_analysis_results(self):
-        """Cache analysis results in Redis for quick access"""
         try:
-            # Read Pig output files and cache key metrics
             output_files = {
                 'comuna_counts': '/output/incidents_by_comuna/part-r-00000',
                 'type_counts': '/output/incidents_by_type/part-r-00000',
@@ -383,7 +341,6 @@ class TrafficDataProcessor:
                 except Exception as e:
                     logger.error(f"Error caching {cache_key}: {e}")
             
-            # Cache processing timestamp
             self.redis_client.setex(
                 "analysis:last_update", 
                 3600, 
@@ -394,9 +351,7 @@ class TrafficDataProcessor:
             logger.error(f"Error caching results: {e}")
     
     def generate_processing_report(self, metrics: ProcessingMetrics) -> Dict:
-        """Generate processing performance report"""
         try:
-            # Get cache statistics
             cache_stats = {}
             cache_keys = [
                 'analysis:comuna_counts',
@@ -415,7 +370,6 @@ class TrafficDataProcessor:
                 except:
                     cache_stats[key] = {'exists': False, 'ttl': -1}
             
-            # Database statistics
             conn = self.get_database_connection()
             db_stats = {}
             
@@ -477,7 +431,6 @@ class TrafficDataProcessor:
         start_time = time.time()
         
         try:
-            # Step 1: Filter and clean data
             logger.info("Step 1: Filtering and cleaning data")
             total_records, filtered_records = self.filter_and_clean_data()
             
@@ -485,7 +438,6 @@ class TrafficDataProcessor:
                 logger.info("No data to process")
                 return
             
-            # Step 2: Export for Pig processing
             logger.info("Step 2: Exporting data for Apache Pig")
             csv_path = self.export_for_pig_processing()
             
@@ -493,7 +445,6 @@ class TrafficDataProcessor:
                 logger.error("Failed to export data for Pig processing")
                 return
             
-            # Step 3: Run Pig analysis
             logger.info("Step 3: Running Apache Pig analysis")
             pig_success = self.run_pig_analysis(csv_path)
             
@@ -501,23 +452,20 @@ class TrafficDataProcessor:
                 logger.error("Pig analysis failed")
                 return
             
-            # Step 4: Cache results
             logger.info("Step 4: Caching analysis results")
             self.cache_analysis_results()
             
-            # Step 5: Generate report
             processing_time = time.time() - start_time
             metrics = ProcessingMetrics(
                 total_records=total_records,
                 filtered_records=filtered_records,
                 processing_time=processing_time,
-                errors_count=0,  # Could be enhanced to track actual errors
+                errors_count=0, 
                 timestamp=datetime.now()
             )
             
             report = self.generate_processing_report(metrics)
             
-            # Cache the report
             self.redis_client.setex(
                 "processing:last_report",
                 3600,
@@ -531,21 +479,17 @@ class TrafficDataProcessor:
             logger.error(f"Error in processing pipeline: {e}")
 
 def main():
-    """Main function"""
     db_url = os.getenv('DATABASE_URL', 'postgresql://traffic_user:traffic_pass@postgres:5432/traffic_db')
     redis_url = os.getenv('REDIS_URL', 'redis://redis:6379')
     
     processor = TrafficDataProcessor(db_url, redis_url)
     
-    # Schedule processing every 30 minutes
     schedule.every(30).minutes.do(processor.process_data_pipeline)
     
-    # Run initial processing
     processor.process_data_pipeline()
     
     logger.info("Data processor initialized. Running scheduled tasks...")
     
-    # Keep running
     while True:
         schedule.run_pending()
         time.sleep(60)
